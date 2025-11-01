@@ -1,0 +1,4 @@
+opcua
+paho-mqtt
+cryptography
+

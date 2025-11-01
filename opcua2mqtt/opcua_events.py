@@ -37,31 +37,31 @@ if __name__ == "__main__":
             "2:CV"
         ]
         target_node = client.get_root_node().get_child(node_path)
-        print("🎯 Target node:", target_node)
+        print(" Target node:", target_node)
 
         # خواندن مقدار اولیه
         try:
             val = target_node.get_value()
-            print("📊 Current value:", val)
+            print(" Current value:", val)
         except Exception as e:
-            print("⚠️ Could not read value:", e)
+            print(" Could not read value:", e)
 
         # ایجاد subscription
         handler = SubHandler()
         sub = client.create_subscription(500, handler)
         handle = sub.subscribe_data_change(target_node)
 
-        print("👂 Listening for changes... (Ctrl+C to stop)")
+        print(" Listening for changes... (Ctrl+C to stop)")
         while True:
             time.sleep(1)
 
     except KeyboardInterrupt:
-        print("\n🛑 Stopped by user.")
+        print("\n Stopped by user.")
     except Exception as e:
-        print("❌ Runtime error:", e)
+        print(" Runtime error:", e)
     finally:
         try:
             client.disconnect()
-            print("🔒 Disconnected from server.")
+            print(" Disconnected from server.")
         except Exception as e:
-            print("⚠️ disconnect warning:", e)
+            print(" disconnect warning:", e)

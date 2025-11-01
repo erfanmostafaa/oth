@@ -1,0 +1,126 @@
+
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "All CV Tags – Live",
+      "id": 1,
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 0 },
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "lines", "lineWidth": 2, "fillOpacity": 20 },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"mybucket\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"opcua\")\n  |> filter(fn: (r) => r._field == \"value\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\", \"id\", \"name\"])"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Selected CV – Trend",
+      "id": 2,
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 12 },
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "lines", "lineWidth": 2, "fillOpacity": 20 },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "single" }
+      },
+      "targets": [
+        {
+          "refId": "B",
+          "query": "import \"influxdata/influxdb/schema\"\nfrom(bucket: \"mybucket\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"opcua\")\n  |> filter(fn: (r) => r._field == \"value\")\n  |> filter(fn: (r) => contains(value: r.id, set: ${cv:json}))\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\", \"id\", \"name\"])"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Latest Values (per CV)",
+      "id": 3,
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 22 },
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "align": "auto" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "footer": { "show": false }
+      },
+      "targets": [
+        {
+          "refId": "C",
+          "query": "from(bucket: \"mybucket\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"opcua\")\n  |> filter(fn: (r) => r._field == \"value\")\n  |> group(columns: [\"id\", \"name\"], mode: \"by\")\n  |> keep(columns: [\"_time\", \"_value\", \"id\", \"name\"]) \n  |> last() \n  |> sort(columns: [\"id\"], desc: false)"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {},
+            "indexByName": {},
+            "renameByName": {
+              "_time": "time",
+              "_value": "value",
+              "id": "CV id",
+              "name": "tag"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "refresh": "5s",
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": ["opcua", "cv", "mqtt"],
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "label": "InfluxDB",
+        "type": "datasource",
+        "query": "influxdb",
+        "refresh": 1
+      },
+      {
+        "name": "cv",
+        "label": "Select CV(s)",
+        "type": "query",
+        "multi": true,
+        "includeAll": true,
+        "datasource": "${datasource}",
+        "query": "import \"influxdata/influxdb/schema\"\nschema.tagValues(\n  bucket: \"mybucket\",\n  tag: \"id\",\n  predicate: (r) => r._measurement == \"opcua\" and r._field == \"value\",\n  start: -1h\n)\n|> keep(columns: [\"_value\"]) \n|> unique() \n|> sort() \n|> limit(n: 2000)"
+      }
+    ]
+  },
+  "time": { "from": "now-15m", "to": "now" },
+  "timepicker": { "refresh_intervals": ["5s", "10s", "30s", "1m", "5m"] },
+  "timezone": "",
+  "title": "OPCUA CV – Auto Dashboard",
+  "version": 1
+}

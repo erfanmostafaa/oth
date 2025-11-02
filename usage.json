@@ -1,0 +1,292 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "type": "gauge",
+      "title": "CPU Usage (total)",
+      "id": 201,
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 0 },
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green" },
+              { "color": "yellow", "value": 70 },
+              { "color": "red", "value": 90 }
+            ]
+          }
+        }
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "values": false } },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"${bucket}\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"cpu\" and r._field == \"usage_idle\") |> last() |> map(fn: (r) => ({ r with _value: 100.0 - r._value })) |> keep(columns:[\"_time\",\"_value\"])"
+        }
+      ]
+    },
+    {
+      "type": "gauge",
+      "title": "Latency (sec) – CPU",
+      "id": 202,
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 0 },
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green" },
+              { "color": "yellow", "value": 1 },
+              { "color": "red", "value": 3 }
+            ]
+          }
+        }
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "values": false } },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "import \"date\"\nfrom(bucket: \"${bucket}\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"cpu\" and r._field == \"usage_idle\")\n  |> sort(columns: [\"_time\"], desc: true)\n  |> limit(n: 1)\n  |> map(fn: (r) => ({ r with _value: float(v: date.nanosecond(t: now()) - date.nanosecond(t: r._time)) / 1000000000.0 }))\n  |> keep(columns: [\"_time\",\"_value\"])"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "CPU Usage – Trend",
+      "id": 203,
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 0 },
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "percent" } },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single" } },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"${bucket}\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"cpu\" and r._field == \"usage_idle\") |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false) |> map(fn: (r) => ({ r with _value: 100.0 - r._value })) |> keep(columns:[\"_time\",\"_value\"])"
+        }
+      ]
+    },
+    {
+      "type": "gauge",
+      "title": "Memory Used %",
+      "id": 204,
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 8 },
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green" },
+              { "color": "yellow", "value": 70 },
+              { "color": "red", "value": 90 }
+            ]
+          }
+        }
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "values": false } },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"${bucket}\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"mem\" and r._field == \"used_percent\") |> last() |> keep(columns:[\"_time\",\"_value\"])"
+        }
+      ]
+    },
+    {
+      "type": "gauge",
+      "title": "Latency (sec) – Memory",
+      "id": 205,
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 8 },
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green" },
+              { "color": "yellow", "value": 1 },
+              { "color": "red", "value": 3 }
+            ]
+          }
+        }
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "values": false } },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "import \"date\"\nfrom(bucket: \"${bucket}\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"mem\" and r._field == \"used_percent\")\n  |> sort(columns: [\"_time\"], desc: true)\n  |> limit(n: 1)\n  |> map(fn: (r) => ({ r with _value: float(v: date.nanosecond(t: now()) - date.nanosecond(t: r._time)) / 1000000000.0 }))\n  |> keep(columns: [\"_time\",\"_value\"])"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Memory – Trend",
+      "id": 206,
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 8 },
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "percent" } },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single" } },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"${bucket}\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"mem\" and r._field == \"used_percent\") |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false) |> keep(columns:[\"_time\",\"_value\"])"
+        }
+      ]
+    },
+    {
+      "type": "gauge",
+      "title": "Disk Used % – ${mount}",
+      "id": 207,
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 16 },
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green" },
+              { "color": "yellow", "value": 75 },
+              { "color": "red", "value": 90 }
+            ]
+          }
+        }
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "values": false } },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"${bucket}\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"disk\" and r._field == \"used_percent\" and r.path == \"${mount}\") |> last() |> keep(columns:[\"_time\",\"_value\",\"path\"])"
+        }
+      ],
+      "repeat": "mount",
+      "repeatDirection": "h",
+      "maxPerRow": 6
+    },
+    {
+      "type": "gauge",
+      "title": "Latency (sec) – Disk ${mount}",
+      "id": 208,
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 16 },
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green" },
+              { "color": "yellow", "value": 1 },
+              { "color": "red", "value": 3 }
+            ]
+          }
+        }
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "values": false } },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "import \"date\"\nfrom(bucket: \"${bucket}\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"disk\" and r._field == \"used_percent\" and r.path == \"${mount}\")\n  |> sort(columns: [\"_time\"], desc: true)\n  |> limit(n: 1)\n  |> map(fn: (r) => ({ r with _value: float(v: date.nanosecond(t: now()) - date.nanosecond(t: r._time)) / 1000000000.0 }))\n  |> keep(columns: [\"_time\",\"_value\",\"path\"])"
+        }
+      ],
+      "repeat": "mount",
+      "repeatDirection": "h",
+      "maxPerRow": 6
+    },
+    {
+      "type": "table",
+      "title": "Disks – Latest Used %",
+      "id": 209,
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 24 },
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "custom": { "align": "auto" } } },
+      "options": { "showHeader": true, "footer": { "show": false } },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"${bucket}\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"disk\" and r._field == \"used_percent\") |> group(columns:[\"path\"], mode: \"by\") |> last() |> keep(columns:[\"_time\",\"_value\",\"path\"]) |> sort(columns:[\"path\"])"
+        }
+      ],
+      "transformations": [
+        { "id": "organize", "options": { "renameByName": { "_time": "time", "_value": "used_percent", "path": "mount" } } }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Disk IO – Read/Write (bytes/s)",
+      "id": 210,
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 32 },
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "Bps" } },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "refId": "R", "query": "from(bucket: \"${bucket}\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"diskio\" and r._field == \"read_bytes\") |> derivative(unit: v.windowPeriod, nonNegative: true) |> keep(columns:[\"_time\",\"_value\",\"name\"])"},
+        { "refId": "W", "query": "from(bucket: \"${bucket}\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"diskio\" and r._field == \"write_bytes\") |> derivative(unit: v.windowPeriod, nonNegative: true) |> keep(columns:[\"_time\",\"_value\",\"name\"])"}
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "System Load (1m / 5m / 15m)",
+      "id": 211,
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 42 },
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "values": false } },
+      "targets": [
+        { "refId": "L1",  "query": "from(bucket: \"${bucket}\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"system\" and r._field == \"load1\")  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)  |> keep(columns:[\"_time\",\"_value\"])"},
+        { "refId": "L5",  "query": "from(bucket: \"${bucket}\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"system\" and r._field == \"load5\")  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)  |> keep(columns:[\"_time\",\"_value\"])"},
+        { "refId": "L15", "query": "from(bucket: \"${bucket}\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"system\" and r._field == \"load15\") |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)  |> keep(columns:[\"_time\",\"_value\"])"}
+      ]
+    }
+  ],
+  "refresh": "1s",
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": ["system", "telegraf"],
+  "templating": {
+    "list": [
+      { "name": "datasource", "label": "InfluxDB", "type": "datasource", "query": "influxdb", "refresh": 1 },
+      {
+        "name": "bucket",
+        "label": "Bucket",
+        "type": "textbox",
+        "query": "mybucket",
+        "current": { "text": "mybucket", "value": "mybucket" }
+      },
+      {
+        "name": "mount",
+        "label": "Select mount(s)",
+        "type": "query",
+        "multi": true,
+        "includeAll": true,
+        "datasource": "${datasource}",
+        "query": "import \"influxdata/influxdb/schema\"\nschema.tagValues(bucket: \"${bucket}\", tag: \"path\", predicate: (r) => r._measurement == \"disk\" and r._field == \"used_percent\", start: -24h)\n  |> keep(columns:[\"_value\"]) |> unique() |> sort()"
+      }
+    ]
+  },
+  "time": { "from": "now-15m", "to": "now" },
+  "timepicker": { "refresh_intervals": ["1s","5s","10s","30s","1m","5m"] },
+  "timezone": "",
+  "title": "System Consumption – CPU/MEM/Disk/IO/Latency",
+  "version": 5
+}

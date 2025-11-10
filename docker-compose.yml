@@ -73,7 +73,9 @@ services:
         condition: service_healthy
     volumes:
       - ./opcua2mqtt/opcua_to_emqx.py:/app/opcua_to_emqx.py:ro
-    networks: [iot]
+    networks:
+      - iot
+
 
 
 

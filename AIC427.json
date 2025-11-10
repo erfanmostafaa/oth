@@ -1,0 +1,143 @@
+{
+  "title": "OPCUA – AIC427 Alarm Gauges",
+  "style": "dark",
+  "timezone": "browser",
+  "editable": true,
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "time": { "from": "now-15m", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "label": "InfluxDB",
+        "type": "datasource",
+        "query": "influxdb",
+        "refresh": 1
+      },
+      {
+        "name": "bucket",
+        "label": "Bucket",
+        "type": "textbox",
+        "current": { "text": "mybucket", "value": "mybucket" }
+      },
+      {
+        "name": "cvprefix",
+        "label": "CV Prefix (مثال: AIC427/AI1)",
+        "type": "textbox",
+        "current": { "text": "AIC427/AI1", "value": "AIC427/AI1" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "gauge",
+      "title": "HI_HI_ALM.CV",
+      "id": 1,
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 0 },
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "" } },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "import \"regexp\"\nprefix = \"${cvprefix}\"\nfrom(bucket: \"${bucket}\")\n  |> range(start: -30m)\n  |> filter(fn: (r) => r._measurement == \"opcua\")\n  |> filter(fn: (r) => r._field == \"value\")\n  |> filter(fn: (r) => regexp.matchesRegexp(r: r.name, re: prefix + \"/HI_HI_ALM.CV$\"))\n  |> last()"
+        }
+      ]
+    },
+    {
+      "type": "gauge",
+      "title": "HI_ALM.CV",
+      "id": 2,
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 0 },
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "" } },
+      "targets": [
+        {
+          "refId": "B",
+          "query": "import \"regexp\"\nprefix = \"${cvprefix}\"\nfrom(bucket: \"${bucket}\")\n  |> range(start: -30m)\n  |> filter(fn: (r) => r._measurement == \"opcua\")\n  |> filter(fn: (r) => r._field == \"value\")\n  |> filter(fn: (r) => regexp.matchesRegexp(r: r.name, re: prefix + \"/HI_ALM.CV$\"))\n  |> last()"
+        }
+      ]
+    },
+    {
+      "type": "gauge",
+      "title": "LO_ALM.CV",
+      "id": 3,
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 0 },
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "" } },
+      "targets": [
+        {
+          "refId": "C",
+          "query": "import \"regexp\"\nprefix = \"${cvprefix}\"\nfrom(bucket: \"${bucket}\")\n  |> range(start: -30m)\n  |> filter(fn: (r) => r._measurement == \"opcua\")\n  |> filter(fn: (r) => r._field == \"value\")\n  |> filter(fn: (r) => regexp.matchesRegexp(r: r.name, re: prefix + \"/LO_ALM.CV$\"))\n  |> last()"
+        }
+      ]
+    },
+    {
+      "type": "gauge",
+      "title": "LO_LO_ALM.CV",
+      "id": 4,
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 0 },
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "" } },
+      "targets": [
+        {
+          "refId": "D",
+          "query": "import \"regexp\"\nprefix = \"${cvprefix}\"\nfrom(bucket: \"${bucket}\")\n  |> range(start: -30m)\n  |> filter(fn: (r) => r._measurement == \"opcua\")\n  |> filter(fn: (r) => r._field == \"value\")\n  |> filter(fn: (r) => regexp.matchesRegexp(r: r.name, re: prefix + \"/LO_LO_ALM.CV$\"))\n  |> last()"
+        }
+      ]
+    }
+  ]
+}

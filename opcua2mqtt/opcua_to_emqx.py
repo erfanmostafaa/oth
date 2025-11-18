@@ -12,9 +12,13 @@ from opcua import Client, ua
 import paho.mqtt.client as mqtt
 
 # =======================
-#   env config
+#   Env config
 # =======================
 OPCUA_ENDPOINT        = os.getenv("OPCUA_ENDPOINT", "opc.tcp://127.0.0.1:4840")
+
+# مثال:
+#   NONE
+#   Basic256,Sign,/app/certs/client-cert.pem,/app/certs/client-key.pem
 OPCUA_SECURITY        = os.getenv("OPCUA_SECURITY", "NONE").strip()
 OPCUA_USER            = os.getenv("OPCUA_USER", "").strip()
 OPCUA_PASS            = os.getenv("OPCUA_PASS", "").strip()
@@ -33,15 +37,24 @@ PUBSUB_TOPIC          = os.getenv("PUBSUB_TOPIC", f"opcua/json/{SITE}-{UNIT}-{PL
 PUBLISH_INTERVAL_MS   = int(os.getenv("PUBLISH_INTERVAL_MS", "250"))
 LOG_LEVEL             = os.getenv("LOG_LEVEL", "INFO").upper()
 
-# هر چند ثانیه یه بار همه CV ها رو دوباره بفرست
+# هر چند ثانیه یک بار همه‌ی CV ها را دوباره بفرستیم (برای sync مجدد subscriberها)
 PERIODIC_REPUBLISH_SEC = int(os.getenv("PERIODIC_REPUBLISH_SEC", "5"))
 
-# برای اینکه دلتاوی بی‌نهایت درخت نداشته باشه
-MAX_BROWSE_DEPTH       = int(os.getenv("MAX_BROWSE_DEPTH", "15"))
+# عمق گشتن در درخت OPC UA
+MAX_BROWSE_DEPTH       = int(os.getenv("MAX_BROWSE_DEPTH", "30"))
+
+# تأخیر کوچک بین browse هر child برای جلوگیری از فشار روی سرور DeltaV
+BROWSE_DELAY_MS        = int(os.getenv("BROWSE_DELAY_MS", "20"))
+
+# نقطه‌ی شروع براساس AddressSpace زیر Objects
+# مثال:
+#   DA.MODULES.BOILER
+#   DA.MODULES.BOIL_COMB_BURN
+OPCUA_START_PATH       = os.getenv("OPCUA_START_PATH", "DA.MODULES.BOILER").strip()
 
 logging.basicConfig(
     level=getattr(logging, LOG_LEVEL, logging.INFO),
-    format="%(asctime)s %(levelname)s: %(message)s"
+    format="%(asctime)s [%(levelname)s] %(message)s"
 )
 log = logging.getLogger("opcua2mqtt")
 
@@ -62,7 +75,7 @@ def valid_qos(q: int) -> int:
 
 
 class PubBuffer:
-    """یه بافر کوچیک برای تجمیع تغییرها"""
+    """بافر ساده برای تجمیع تغییرها قبل از ارسال پیام PubSub روی MQTT."""
     def __init__(self):
         self._lock = threading.Lock()
         self._seq = itertools.count(1)
@@ -86,7 +99,6 @@ class PubBuffer:
 #   MQTT
 # =======================
 def mqtt_connect():
-    """زودتر از همه وصل شو به MQTT"""
     qos = valid_qos(MQTT_QOS)
     client_id = f"opcua2mqtt-{int(time.time())}"
 
@@ -96,7 +108,7 @@ def mqtt_connect():
         protocol=mqtt.MQTTv5,
     )
 
-    # LWT
+    # Last Will
     c.will_set(f"{PUBSUB_TOPIC}/$status", payload="offline", qos=qos, retain=True)
 
     def on_connect(client, userdata, flags, reason_code, properties):
@@ -136,13 +148,11 @@ def mqtt_publish(c, topic: str, payload: dict, retain=False, qos=None):
 # =======================
 def _apply_security(client: Client):
     sec = OPCUA_SECURITY.upper()
-    if sec == "" or sec == "NONE":
+    if not sec or sec == "NONE":
         log.warning("OPCUA_SECURITY=NONE -> no security")
         return
-    # مثال: Basic256Sha256,SignAndEncrypt,./certs/client.pem,./certs/client-key.pem
-    parts = [p.strip() for p in OPCUA_SECURITY.split(",")]
-    if len(parts) < 4:
-        raise RuntimeError(f"OPCUA_SECURITY malformed: {OPCUA_SECURITY}")
+    # مثال: "Basic256,Sign,/app/certs/client-cert.pem,/app/certs/client-key.pem"
+    log.info("Using OPC UA security string: %s", OPCUA_SECURITY)
     client.set_security_string(OPCUA_SECURITY)
 
 
@@ -159,11 +169,17 @@ def build_opcua_client() -> Client:
 
 
 def browse_children(node, client: Client):
+    """children را با یک delay کوچک می‌خواند که سرور DeltaV Overload نشود."""
     out = []
-    refs = node.get_references(
-        ua.ObjectIds.HierarchicalReferences,
-        direction=ua.BrowseDirection.Forward
-    )
+    try:
+        refs = node.get_references(
+            ua.ObjectIds.HierarchicalReferences,
+            direction=ua.BrowseDirection.Forward
+        )
+    except Exception as e:
+        log.warning("browse get_references err: %s", e)
+        return out
+
     for ref in refs:
         try:
             child = client.get_node(ref.NodeId)
@@ -171,17 +187,44 @@ def browse_children(node, client: Client):
             out.append((dn, child))
         except Exception as e:
             log.warning("browse child err: %s", e)
+        if BROWSE_DELAY_MS > 0:
+            time.sleep(BROWSE_DELAY_MS / 1000.0)
     return out
 
 
-def crawl_all_for_cv(client: Client) -> Dict[str, Dict]:
+def resolve_path_from_objects(client: Client, path_str: str):
     """
-    از Objects شروع می‌کنیم و هر Variable که اسمش CV یا ...CV باشه رو جمع می‌کنیم.
-    عمق گشتن هم با MAX_BROWSE_DEPTH محدود شده.
+    path_str مثل 'DA.MODULES.BOILER' را از زیر Objects دنبال می‌کند
+    و نود نهایی + مسیر منطقی را برمی‌گرداند.
     """
-    objects = client.get_objects_node()
+    parts = [p.strip() for p in path_str.split(".") if p.strip()]
+    node = client.get_objects_node()
+    current_path = ["Objects"]
+
+    for part in parts:
+        children = browse_children(node, client)
+        found = None
+        for (name, child) in children:
+            if name == part:
+                found = child
+                break
+        if not found:
+            log.error("Path component '%s' not found under %s", part, ".".join(current_path))
+            return None
+        node = found
+        current_path.append(part)
+
+    log.info("Resolved OPCUA_START_PATH=%s to node %s", path_str, ".".join(current_path))
+    return node, current_path
+
+
+def _crawl_from_node(client: Client, root_node, root_path: List[str]) -> Dict[str, Dict]:
+    """
+    از root_node با مسیر root_path شروع می‌کند و همه Variable هایی که اسم‌شان .CV است را
+    تا عمق MAX_BROWSE_DEPTH جمع می‌کند.
+    """
     result: Dict[str, Dict] = {}
-    stack: List[Tuple[List[str], object, int]] = [([], objects, 0)]
+    stack: List[Tuple[List[str], object, int]] = [(root_path, root_node, 0)]
 
     while stack:
         path, node, depth = stack.pop()
@@ -189,14 +232,19 @@ def crawl_all_for_cv(client: Client) -> Dict[str, Dict]:
             continue
 
         for (name, child) in browse_children(node, client):
+            if not name:
+                continue
+
+            lname = name.lower()
             new_path = path + [name]
+
             try:
                 node_class = child.get_node_class()
             except Exception:
                 node_class = None
 
-            name_lower = (name or "").lower()
-            if node_class == ua.NodeClass.Variable and (name_lower == "cv" or name_lower.endswith(".cv")):
+            # هر Variable که با .cv تمام شود
+            if node_class == ua.NodeClass.Variable and lname.endswith(".cv"):
                 tagname = ".".join(new_path)
                 nodeid_str = child.nodeid.to_string()
                 result[tagname] = {
@@ -205,7 +253,7 @@ def crawl_all_for_cv(client: Client) -> Dict[str, Dict]:
                 }
                 log.info("FOUND CV TAG: %s -> %s", tagname, nodeid_str)
 
-            # ادامه‌ی گشتن
+            # ادامه‌ی گشتن در Objectها و VariableTypeها
             if node_class in (
                 ua.NodeClass.Object,
                 ua.NodeClass.Unspecified,
@@ -217,8 +265,32 @@ def crawl_all_for_cv(client: Client) -> Dict[str, Dict]:
     return result
 
 
+def crawl_all_for_cv(client: Client) -> Dict[str, Dict]:
+    """
+    نقطه‌ی شروع را از OPCUA_START_PATH (مثلاً DA.MODULES.BOILER) می‌گیرد
+    و فقط همان شاخه را می‌گردد.
+    """
+    start_path = OPCUA_START_PATH
+    if not start_path:
+        log.error("OPCUA_START_PATH is empty – nothing to browse.")
+        return {}
+
+    resolved = resolve_path_from_objects(client, start_path)
+    if not resolved:
+        log.error("Could not resolve OPCUA_START_PATH '%s'", start_path)
+        return {}
+
+    root_node, root_path = resolved
+    log.info(
+        "Browsing CVs under: %s (max depth %d)",
+        ".".join(root_path),
+        MAX_BROWSE_DEPTH,
+    )
+    return _crawl_from_node(client, root_node, root_path)
+
+
 def periodic_republish(mqttc, cv_map: Dict[str, Dict], interval_sec: int = 5):
-    """هر چند ثانیه همه رو دوباره بفرست"""
+    """هر چند ثانیه تمامی CV ها را دوباره publish می‌کند."""
     global stop
     while not stop:
         for tagname, info in cv_map.items():
@@ -244,20 +316,21 @@ def periodic_republish(mqttc, cv_map: Dict[str, Dict], interval_sec: int = 5):
 def run_once():
     global stop
 
-    # 1) اول MQTT
+    # 1) MQTT
     mqttc = mqtt_connect()
 
-    # 2) بعد OPC UA
+    # 2) OPC UA
     client = build_opcua_client()
     client.connect()
     log.info("✅ OPC UA session active")
 
-    # 3) گشتن دنبال CV
+    # 3) گشتن CV فقط از مسیر OPCUA_START_PATH (پیش‌فرض: DA.MODULES.BOILER)
     cv_map = crawl_all_for_cv(client)
+    log.info("Total CV tags found under %s: %d", OPCUA_START_PATH, len(cv_map))
     if not cv_map:
-        log.warning("No CV tags found under Objects")
+        log.warning("No CV tags found under configured path")
 
-    # 4) انتشار اولیه (retained)
+    # 4) انتشار اولیه (retained) روی TOPIC_BASE/init/...
     for tagname, info in cv_map.items():
         node = info["node"]
         nodeid_str = info["nodeid_str"]
@@ -274,7 +347,7 @@ def run_once():
         }
         mqtt_publish(mqttc, f"{TOPIC_BASE}/init/{tagname}", payload, retain=True)
 
-    # نقشه‌ی برعکس برای دیتاچنج
+    # نقشه معکوس برای datachange
     node_to_meta: Dict[str, Dict[str, str]] = {}
     for tagname, info in cv_map.items():
         nodeid_str = info["nodeid_str"]
@@ -306,7 +379,7 @@ def run_once():
             mqtt_publish(mqttc, f"{TOPIC_BASE}/{tagname}", payload, retain=False)
             agg.add(tagname, val)
 
-    # سابسکرایب
+    # سابسکرایب روی همه‌ی CV ها
     if cv_map:
         sub = client.create_subscription(1000, Handler())
         sub.subscribe_data_change([info["node"] for info in cv_map.values()])
@@ -314,7 +387,7 @@ def run_once():
     else:
         sub = None
 
-    # ترد تجمیع OPC UA PubSub
+    # ترد PubSub aggregate روی PUBSUB_TOPIC
     def pub_loop():
         while not stop:
             time.sleep(PUBLISH_INTERVAL_MS / 1000.0)
@@ -343,6 +416,7 @@ def run_once():
         while not stop:
             time.sleep(0.5)
     finally:
+        # جمع کردن تمیز
         try:
             if sub:
                 sub.delete()

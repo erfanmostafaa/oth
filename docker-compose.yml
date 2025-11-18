@@ -60,6 +60,7 @@ services:
     environment:
       - GF_SECURITY_ADMIN_USER=${GRAFANA_USER}
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
+
     networks:
       - iot
 
@@ -73,8 +74,10 @@ services:
         condition: service_healthy
     volumes:
       - ./opcua2mqtt/opcua_to_emqx.py:/app/opcua_to_emqx.py:ro
+      - ./certs:/app/certs:ro
     networks:
       - iot
+
 
 
 
@@ -96,6 +99,8 @@ services:
         condition: service_healthy
     networks: [iot]
     restart: "no"
+
+
 volumes:
   influx-data:
 

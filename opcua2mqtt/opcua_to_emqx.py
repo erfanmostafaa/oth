@@ -140,7 +140,9 @@ def mqtt_publish(c, topic: str, payload: dict, retain=False, qos=None):
     data = json.dumps(payload, ensure_ascii=False)
     info = c.publish(topic, data, qos=qos, retain=retain)
     if info.rc != mqtt.MQTT_ERR_SUCCESS:
-        log.warning("Publish rc=%s topic=%s", info.rc, topic)
+        log.warning("Publish FAILED rc=%s topic=%s", info.rc, topic)
+    else:
+        log.debug("Publish OK topic=%s retain=%s", topic, retain)
 
 
 # =======================
@@ -331,6 +333,7 @@ def run_once():
         log.warning("No CV tags found under configured path")
 
     # 4) انتشار اولیه (retained) روی TOPIC_BASE/init/...
+    log.info("Publishing %d retained init snapshots to MQTT...", total)
     for tagname, info in cv_map.items():
         node = info["node"]
         nodeid_str = info["nodeid_str"]
@@ -346,7 +349,7 @@ def run_once():
             "ts": iso_now(),
         }
         mqtt_publish(mqttc, f"{TOPIC_BASE}/init/{tagname}", payload, retain=True)
-
+    log.info("Initial publish done.")
     # نقشه معکوس برای datachange
     node_to_meta: Dict[str, Dict[str, str]] = {}
     for tagname, info in cv_map.items():

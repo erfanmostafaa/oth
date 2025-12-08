@@ -1,26 +1,24 @@
+
 services:
   emqx:
     image: emqx:5
     container_name: emqx
     restart: unless-stopped
     ports:
-      - "1883:1883"     # MQTT
-      - "18083:18083"   # EMQX dashboard
+      - "1883:1883"   # MQTT
+      - "18083:18083" # Dashboard
     healthcheck:
-      test: ["CMD", "sh", "-lc", "emqx ping | grep -q pong"]
-      interval: 10s
-      timeout: 5s
+      test: ["CMD", "sh", "-lc", "nc -z 127.0.0.1 1883"]
+      interval: 5s
+      timeout: 3s
       retries: 30
-      start_period: 20s
-    networks:
-      - iot
+    networks: [iot]
 
   influxdb:
     image: influxdb:2.7
     container_name: influxdb
     restart: unless-stopped
-    ports:
-      - "8086:8086"
+    ports: ["8086:8086"]
     environment:
       DOCKER_INFLUXDB_INIT_MODE: setup
       DOCKER_INFLUXDB_INIT_USERNAME: ${INFLUX_USER}
@@ -30,8 +28,7 @@ services:
       DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${INFLUX_TOKEN}
     volumes:
       - influx-data:/var/lib/influxdb2
-    networks:
-      - iot
+    networks: [iot]
 
   telegraf:
     image: telegraf:1.32
@@ -45,8 +42,7 @@ services:
     volumes:
       - ./telegraf.conf:/etc/telegraf/telegraf.conf:ro
     env_file: .env
-    networks:
-      - iot
+    networks: [iot]
 
   grafana:
     image: grafana/grafana:12.0.2
@@ -60,28 +56,47 @@ services:
     environment:
       - GF_SECURITY_ADMIN_USER=${GRAFANA_USER}
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
+    networks: [iot]
 
-    networks:
-      - iot
-
-  opcua2mqtt:
-    build: ./opcua2mqtt
-    container_name: opcua2mqtt
+  # ====== OPCUA -> MQTT (BOIL_DRUM_LEVEL) ======
+  opcua2mqtt_drum:
+    build: .
+    container_name: opcua2mqtt_drum
     restart: unless-stopped
-    env_file: .env
+    env_file: .env        # بقیه متغیرها از اینجا می‌آیند
+    environment:
+      OPCUA_START_PATH: "DA.MODULES.BOILER.BOIL_DRUM_LEVEL"
+      MAX_BROWSE_DEPTH: "5"
+      BROWSE_DELAY_MS: "100"
+      # تاپیک‌های مجزا برای Drum
+      TOPIC_BASE: "plant/${SITE}/${UNIT}/${PLC}/cv/drum"
+      PUBSUB_TOPIC: "opcua/json/${SITE}-${UNIT}-${PLC}-DRUM"
+      PUBLISHER_ID: "${SITE}-${UNIT}-${PLC}-DRUM"
+      DATASET_WRITER_ID: "1"
     depends_on:
       emqx:
         condition: service_healthy
-    volumes:
-      - ./opcua2mqtt/opcua_to_emqx.py:/app/opcua_to_emqx.py:ro
-      - ./certs:/app/certs:ro
-    networks:
-      - iot
+    networks: [iot]
 
-
-
-
-
+  # ====== OPCUA -> MQTT (BOIL_COMB_BURN) ======
+  opcua2mqtt_burn:
+    build: .
+    container_name: opcua2mqtt_burn
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      OPCUA_START_PATH: "DA.MODULES.BOILER.BOIL_COMB_BURN"
+      MAX_BROWSE_DEPTH: "5"
+      BROWSE_DELAY_MS: "100"
+      # تاپیک‌های مجزا برای Burn
+      TOPIC_BASE: "plant/${SITE}/${UNIT}/${PLC}/cv/burn"
+      PUBSUB_TOPIC: "opcua/json/${SITE}-${UNIT}-${PLC}-BURN"
+      PUBLISHER_ID: "${SITE}-${UNIT}-${PLC}-BURN"
+      DATASET_WRITER_ID: "2"
+    depends_on:
+      emqx:
+        condition: service_healthy
+    networks: [iot]
 
 
 

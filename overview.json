@@ -1,0 +1,299 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": 38,
+  "links": [],
+  "panels": [
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "${datasource}"
+      },
+      "description": "فشار خروجی PIC428 – گیج D3 (PV)",
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 2,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "rgba(0, 120, 255, 1)"
+              },
+              {
+                "color": "dark-red",
+                "value": -15
+              },
+              {
+                "color": "dark-red",
+                "value": -12
+              },
+              {
+                "color": "dark-red",
+                "value": -10
+              },
+              {
+                "color": "dark-green",
+                "value": -8
+              }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "links": [
+        {
+          "targetBlank": true,
+          "title": "جزئیات PIC428",
+          "url": "d/pic428-pv-stdev-alarms/d8b484a?from=${__from}&to=${__to}&var-datasource=${datasource}"
+        }
+      ],
+      "options": {
+        "allowNeedleCrossLimits": true,
+        "animateNeedleValueTransition": true,
+        "animateNeedleValueTransitionSpeed": 120,
+        "edgeWidth": 0.08,
+        "gaugeRadius": 0,
+        "innerColor": "#111111",
+        "markerEndEnabled": false,
+        "markerEndShape": "arrow",
+        "markerStartEnabled": false,
+        "markerStartShape": "circle",
+        "maxNeedleAngle": 320,
+        "maxTickAngle": 300,
+        "maxValue": 10,
+        "minValue": -15,
+        "minVizHeight": 75,
+        "minVizWidth": 75,
+        "needleColor": "#ffffff",
+        "needleCrossLimitDegrees": 10,
+        "needleLengthNeg": 0,
+        "needleTickGap": 0.05,
+        "needleWidth": 6,
+        "operatorName": "mean",
+        "orientation": "auto",
+        "outerEdgeColor": "#444444",
+        "padding": 0.05,
+        "pivotColor": "#cccccc",
+        "pivotRadius": 0.12,
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showThresholdBandLowerRange": true,
+        "showThresholdBandMiddleRange": true,
+        "showThresholdBandOnGauge": true,
+        "showThresholdBandUpperRange": true,
+        "showThresholdLabels": true,
+        "showThresholdMarkers": true,
+        "showThresholdStateOnBackground": false,
+        "showThresholdStateOnValue": false,
+        "sizing": "auto",
+        "tickEdgeGap": 0.05,
+        "tickFont": "Inter",
+        "tickLabelColor": "#ffffff",
+        "tickLabelFontSize": 16,
+        "tickLengthMaj": 0.15,
+        "tickLengthMin": 0.05,
+        "tickMajorColor": "#ffffff",
+        "tickMapConfig": {
+          "tickMaps": []
+        },
+        "tickMinorColor": "#999999",
+        "tickSpacingMajor": 1,
+        "tickSpacingMinor": 1,
+        "tickWidthMajor": 4,
+        "tickWidthMinor": 1,
+        "ticknessGaugeBasis": 220,
+        "unitsLabelColor": "#ffffff",
+        "valueFont": "Inter",
+        "valueFontSize": 24,
+        "valueYOffset": 0,
+        "zeroNeedleAngle": 40,
+        "zeroTickAngle": 60
+      },
+      "pluginVersion": "2.0.1",
+      "targets": [
+        {
+          "query": "from(bucket: \"mybucket\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"opcua\" and r._field == \"value\")\n  |> filter(fn: (r) => r.name == \"Objects.DA.MODULES.BOILER.BOIL_COMB_BURN.PIC428.AI1.PV.PV.CV\")\n  |> last()\n  |> keep(columns: [\"_time\", \"_value\", \"name\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "PIC428 – گیج D3 فشار خروجی (PV)",
+      "type": "briangann-gauge-panel"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "${datasource}"
+      },
+      "description": "فشار خروجی AIC427 – گیج D3 (PV)",
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 2,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "dark-green"
+              },
+              {
+                "color": "dark-red",
+                "value": 8
+              }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "id": 2,
+      "links": [
+        {
+          "targetBlank": true,
+          "title": "جزئیات AIC427",
+          "url": "d/aic427-pv-stdev-alarms/8083b83?from=${__from}&to=${__to}&var-datasource=${datasource}"
+        }
+      ],
+      "options": {
+        "allowNeedleCrossLimits": true,
+        "animateNeedleValueTransition": true,
+        "animateNeedleValueTransitionSpeed": 120,
+        "edgeWidth": 0.08,
+        "gaugeRadius": 0,
+        "innerColor": "#111111",
+        "markerEndEnabled": false,
+        "markerEndShape": "arrow",
+        "markerStartEnabled": false,
+        "markerStartShape": "circle",
+        "maxNeedleAngle": 320,
+        "maxTickAngle": 300,
+        "maxValue": 20,
+        "minValue": 0,
+        "minVizHeight": 75,
+        "minVizWidth": 75,
+        "needleColor": "#ffffff",
+        "needleCrossLimitDegrees": 10,
+        "needleLengthNeg": 0,
+        "needleTickGap": 0.05,
+        "needleWidth": 6,
+        "operatorName": "mean",
+        "orientation": "auto",
+        "outerEdgeColor": "#444444",
+        "padding": 0.05,
+        "pivotColor": "#cccccc",
+        "pivotRadius": 0.12,
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showThresholdBandLowerRange": true,
+        "showThresholdBandMiddleRange": true,
+        "showThresholdBandOnGauge": true,
+        "showThresholdBandUpperRange": true,
+        "showThresholdLabels": true,
+        "showThresholdMarkers": true,
+        "showThresholdStateOnBackground": false,
+        "showThresholdStateOnValue": false,
+        "sizing": "auto",
+        "tickEdgeGap": 0.05,
+        "tickFont": "Inter",
+        "tickLabelColor": "#ffffff",
+        "tickLabelFontSize": 16,
+        "tickLengthMaj": 0.15,
+        "tickLengthMin": 0.05,
+        "tickMajorColor": "#ffffff",
+        "tickMapConfig": {
+          "tickMaps": []
+        },
+        "tickMinorColor": "#999999",
+        "tickSpacingMajor": 1,
+        "tickSpacingMinor": 1,
+        "tickWidthMajor": 4,
+        "tickWidthMinor": 1,
+        "ticknessGaugeBasis": 220,
+        "unitsLabelColor": "#ffffff",
+        "valueFont": "Inter",
+        "valueFontSize": 24,
+        "valueYOffset": 0,
+        "zeroNeedleAngle": 40,
+        "zeroTickAngle": 60
+      },
+      "pluginVersion": "2.0.1",
+      "targets": [
+        {
+          "query": "from(bucket: \"mybucket\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"opcua\" and r._field == \"value\")\n  |> filter(fn: (r) => r.name == \"Objects.DA.MODULES.BOILER.BOIL_COMB_BURN.AIC427.AI1.PV.PV.CV\")\n  |> last()\n  |> keep(columns: [\"_time\", \"_value\", \"name\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "AIC427 – گیج D3 فشار خروجی (PV)",
+      "type": "briangann-gauge-panel"
+    }
+  ],
+  "preload": false,
+  "refresh": "5s",
+  "schemaVersion": 41,
+  "tags": [],
+  "templating": {
+    "list": [
+      {
+        "current": {
+          "text": "influxdb",
+          "value": "df4lomlm049a8e"
+        },
+        "name": "datasource",
+        "options": [],
+        "query": "influxdb",
+        "refresh": 1,
+        "type": "datasource"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Overview – PIC428 & AIC427",
+  "uid": "overview-pic427-428",
+  "version": 2
+}

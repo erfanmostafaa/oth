@@ -5,14 +5,16 @@ services:
     container_name: emqx
     restart: unless-stopped
     ports:
-      - "1883:1883"   # MQTT
-      - "18083:18083" # Dashboard
+      - "1883:1883"     
+      - "18083:18083"
     healthcheck:
-      test: ["CMD", "sh", "-lc", "nc -z 127.0.0.1 1883"]
-      interval: 5s
-      timeout: 3s
+      test: ["CMD-SHELL", "emqx ping | grep -q pong"]
+      interval: 10s
+      timeout: 5s
       retries: 30
+      start_period: 20s
     networks: [iot]
+
 
   influxdb:
     image: influxdb:2.7
@@ -56,19 +58,20 @@ services:
     environment:
       - GF_SECURITY_ADMIN_USER=${GRAFANA_USER}
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
+    volumes:
+      - /opt/grafana-plugins:/var/lib/grafana/plugins
     networks: [iot]
 
   # ====== OPCUA -> MQTT (BOIL_DRUM_LEVEL) ======
   opcua2mqtt_drum:
-    build: .
+    build: ./opcua2mqtt
     container_name: opcua2mqtt_drum
     restart: unless-stopped
-    env_file: .env        # بقیه متغیرها از اینجا می‌آیند
+    env_file: .env        
     environment:
       OPCUA_START_PATH: "DA.MODULES.BOILER.BOIL_DRUM_LEVEL"
       MAX_BROWSE_DEPTH: "5"
       BROWSE_DELAY_MS: "100"
-      # تاپیک‌های مجزا برای Drum
       TOPIC_BASE: "plant/${SITE}/${UNIT}/${PLC}/cv/drum"
       PUBSUB_TOPIC: "opcua/json/${SITE}-${UNIT}-${PLC}-DRUM"
       PUBLISHER_ID: "${SITE}-${UNIT}-${PLC}-DRUM"
@@ -80,7 +83,7 @@ services:
 
   # ====== OPCUA -> MQTT (BOIL_COMB_BURN) ======
   opcua2mqtt_burn:
-    build: .
+    build: ./opcua2mqtt
     container_name: opcua2mqtt_burn
     restart: unless-stopped
     env_file: .env
@@ -88,7 +91,6 @@ services:
       OPCUA_START_PATH: "DA.MODULES.BOILER.BOIL_COMB_BURN"
       MAX_BROWSE_DEPTH: "5"
       BROWSE_DELAY_MS: "100"
-      # تاپیک‌های مجزا برای Burn
       TOPIC_BASE: "plant/${SITE}/${UNIT}/${PLC}/cv/burn"
       PUBSUB_TOPIC: "opcua/json/${SITE}-${UNIT}-${PLC}-BURN"
       PUBLISHER_ID: "${SITE}-${UNIT}-${PLC}-BURN"

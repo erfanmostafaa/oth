@@ -34,25 +34,9 @@
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              {
-                "color": "rgba(0, 120, 255, 1)"
-              },
-              {
-                "color": "dark-red",
-                "value": -15
-              },
-              {
-                "color": "dark-red",
-                "value": -12
-              },
-              {
-                "color": "dark-red",
-                "value": -10
-              },
-              {
-                "color": "dark-green",
-                "value": -8
-              }
+              { "color": "dark-red" },
+              { "color": "dark-green", "value": -10 },
+              { "color": "dark-red", "value": 5 }
             ]
           },
           "unit": "none"
@@ -102,9 +86,7 @@
         "pivotColor": "#cccccc",
         "pivotRadius": 0.12,
         "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
+          "calcs": ["lastNotNull"],
           "fields": "",
           "values": false
         },
@@ -124,9 +106,7 @@
         "tickLengthMaj": 0.15,
         "tickLengthMin": 0.05,
         "tickMajorColor": "#ffffff",
-        "tickMapConfig": {
-          "tickMaps": []
-        },
+        "tickMapConfig": { "tickMaps": [] },
         "tickMinorColor": "#999999",
         "tickSpacingMajor": 1,
         "tickSpacingMinor": 1,
@@ -163,13 +143,9 @@
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              {
-                "color": "dark-green"
-              },
-              {
-                "color": "dark-red",
-                "value": 8
-              }
+              { "color": "dark-red" },
+              { "color": "dark-green", "value": 0 },
+              { "color": "dark-red", "value": 15 }
             ]
           },
           "unit": "none"
@@ -204,7 +180,7 @@
         "maxNeedleAngle": 320,
         "maxTickAngle": 300,
         "maxValue": 20,
-        "minValue": 0,
+        "minValue": -5,
         "minVizHeight": 75,
         "minVizWidth": 75,
         "needleColor": "#ffffff",
@@ -219,9 +195,7 @@
         "pivotColor": "#cccccc",
         "pivotRadius": 0.12,
         "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
+          "calcs": ["lastNotNull"],
           "fields": "",
           "values": false
         },
@@ -241,9 +215,7 @@
         "tickLengthMaj": 0.15,
         "tickLengthMin": 0.05,
         "tickMajorColor": "#ffffff",
-        "tickMapConfig": {
-          "tickMaps": []
-        },
+        "tickMapConfig": { "tickMaps": [] },
         "tickMinorColor": "#999999",
         "tickSpacingMajor": 1,
         "tickSpacingMinor": 1,

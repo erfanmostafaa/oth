@@ -124,13 +124,9 @@
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              {
-                "color": "green"
-              },
-              {
-                "color": "red",
-                "value": 8
-              }
+              { "color": "red" },
+              { "color": "green", "value": 0 },
+              { "color": "red", "value": 15 }
             ]
           },
           "unit": "none"
@@ -158,7 +154,7 @@
         "maxNeedleAngle": 320,
         "maxTickAngle": 300,
         "maxValue": 20,
-        "minValue": 0,
+        "minValue": -5,
         "minVizHeight": 75,
         "minVizWidth": 75,
         "needleColor": "#ffffff",

@@ -125,13 +125,9 @@
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              {
-                "color": "green"
-              },
-              {
-                "color": "red",
-                "value": 8
-              }
+              { "color": "red" },
+              { "color": "green", "value": -10 },
+              { "color": "red", "value": 5 }
             ]
           },
           "unit": "none"

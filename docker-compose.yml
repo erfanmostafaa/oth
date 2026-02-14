@@ -1,11 +1,10 @@
-
 services:
   emqx:
     image: emqx:5
     container_name: emqx
     restart: unless-stopped
     ports:
-      - "1883:1883"     
+      - "1883:1883"
       - "18083:18083"
     healthcheck:
       test: ["CMD-SHELL", "emqx ping | grep -q pong"]
@@ -15,12 +14,12 @@ services:
       start_period: 20s
     networks: [iot]
 
-
   influxdb:
     image: influxdb:2.7
     container_name: influxdb
     restart: unless-stopped
-    ports: ["8086:8086"]
+    ports:
+      - "8086:8086"
     environment:
       DOCKER_INFLUXDB_INIT_MODE: setup
       DOCKER_INFLUXDB_INIT_USERNAME: ${INFLUX_USER}
@@ -47,7 +46,7 @@ services:
     networks: [iot]
 
   grafana:
-    image: grafana/grafana:12.0.2
+    image: grafana/grafana:11.5.3
     container_name: grafana
     restart: unless-stopped
     depends_on:
@@ -56,21 +55,36 @@ services:
     ports:
       - "3004:3000"
     environment:
-      - GF_SECURITY_ADMIN_USER=${GRAFANA_USER}
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD}
+
+      # Your unsigned OPC UA plugin id (from plugin.json)
+      GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS: ${GRAFANA_UNSIGNED_PLUGINS}
+
+      # Stop Grafana 12 from auto-downloading bundled apps
+      GF_PLUGINS_PREINSTALL_DISABLED: "true"
+
+      # IMPORTANT: use a custom plugins directory to avoid the double-registration bug
+      GF_PATHS_PLUGINS: /var/lib/grafana/custom-plugins
+
+      GF_FEATURE_TOGGLES_DISABLE: "externalCorePlugins"
+      # Keep empty because you are installing local plugins
+      GF_INSTALL_PLUGINS: ""
     volumes:
-      - /opt/grafana-plugins:/var/lib/grafana/plugins
+      - /opt/grafana-data:/var/lib/grafana
+      - ./grafana-plugins:/var/lib/grafana/custom-plugins
     networks: [iot]
+
 
   # ====== OPCUA -> MQTT (BOIL_DRUM_LEVEL) ======
   opcua2mqtt_drum:
     build: ./opcua2mqtt
     container_name: opcua2mqtt_drum
     restart: unless-stopped
-    env_file: .env        
+    env_file: .env
     environment:
       OPCUA_START_PATH: "DA.MODULES.BOILER.BOIL_DRUM_LEVEL"
-      MAX_BROWSE_DEPTH: "5"
+      MAX_BROWSE_DEPTH: "10"
       BROWSE_DELAY_MS: "100"
       TOPIC_BASE: "plant/${SITE}/${UNIT}/${PLC}/cv/drum"
       PUBSUB_TOPIC: "opcua/json/${SITE}-${UNIT}-${PLC}-DRUM"
@@ -89,7 +103,7 @@ services:
     env_file: .env
     environment:
       OPCUA_START_PATH: "DA.MODULES.BOILER.BOIL_COMB_BURN"
-      MAX_BROWSE_DEPTH: "5"
+      MAX_BROWSE_DEPTH: ""
       BROWSE_DELAY_MS: "100"
       TOPIC_BASE: "plant/${SITE}/${UNIT}/${PLC}/cv/burn"
       PUBSUB_TOPIC: "opcua/json/${SITE}-${UNIT}-${PLC}-BURN"
@@ -100,23 +114,20 @@ services:
         condition: service_healthy
     networks: [iot]
 
-
-
   mqtt-dump:
     image: eclipse-mosquitto:2
     container_name: mqtt-dump
+    restart: "no"
     command:
       - sh
       - -c
       - |
-        echo "📡 Subscribing to all topics on EMQX..." && \
+        echo "Subscribing to all topics on EMQX..." && \
         mosquitto_sub -h emqx -p 1883 -t 'plant/#' -v
     depends_on:
       emqx:
         condition: service_healthy
     networks: [iot]
-    restart: "no"
-
 
 volumes:
   influx-data:

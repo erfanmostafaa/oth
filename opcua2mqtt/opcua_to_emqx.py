@@ -7,47 +7,76 @@ import threading
 import itertools
 import re
 from datetime import datetime, timezone, date
-from typing import Dict, Tuple, List, Any
+from typing import Dict, Tuple, List, Any, Optional
 
 from opcua import Client, ua
 import paho.mqtt.client as mqtt
 
 # =======================
+#   SAFE ENV HELPERS
+# =======================
+
+def getenv_str(name: str, default: str = "") -> str:
+    val = os.getenv(name)
+    if val is None:
+        return default
+    return val.strip()
+
+def getenv_int(name: str, default: int) -> int:
+    val = os.getenv(name)
+    if val is None or val.strip() == "":
+        return default
+    try:
+        return int(val)
+    except ValueError:
+        logging.warning("Invalid int env %s=%r → fallback to %d", name, val, default)
+        return default
+
+def getenv_bool(name: str, default: bool = False) -> bool:
+    val = os.getenv(name)
+    if val is None:
+        return default
+    return val.strip() in ("1", "true", "TRUE", "yes", "YES")
+
+# =======================
 #   ENV CONFIG
 # =======================
 
-OPCUA_ENDPOINT = os.getenv("OPCUA_ENDPOINT", "opc.tcp://127.0.0.1:4840")
+OPCUA_ENDPOINT = getenv_str("OPCUA_ENDPOINT", "opc.tcp://127.0.0.1:4840")
 
-# مثال: NONE یا Basic256,Sign,/app/certs/client-cert.pem,/app/certs/client-key.pem
-OPCUA_SECURITY = os.getenv("OPCUA_SECURITY", "NONE").strip()
-OPCUA_USER = os.getenv("OPCUA_USER", "").strip()
-OPCUA_PASS = os.getenv("OPCUA_PASS", "").strip()
+# NONE | Basic256Sha256,SignAndEncrypt,cert,key
+OPCUA_SECURITY = getenv_str("OPCUA_SECURITY", "NONE")
+OPCUA_USER = getenv_str("OPCUA_USER", "")
+OPCUA_PASS = getenv_str("OPCUA_PASS", "")
 
-SITE = os.getenv("SITE", "SITE1")
-UNIT = os.getenv("UNIT", "UNIT1")
-PLC = os.getenv("PLC", "PLC1")
+SITE = getenv_str("SITE", "SITE1")
+UNIT = getenv_str("UNIT", "UNIT1")
+PLC = getenv_str("PLC", "PLC1")
 
-MQTT_HOST = os.getenv("MQTT_HOST", "emqx")
-MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
-MQTT_QOS = int(os.getenv("MQTT_QOS", "0"))
+MQTT_HOST = getenv_str("MQTT_HOST", "emqx")
+MQTT_PORT = getenv_int("MQTT_PORT", 1883)
+MQTT_QOS = getenv_int("MQTT_QOS", 0)
 
-TOPIC_BASE = os.getenv("TOPIC_BASE", f"plant/{SITE}/{UNIT}/{PLC}/cv")
-PUBSUB_TOPIC = os.getenv("PUBSUB_TOPIC", f"opcua/json/{SITE}-{UNIT}-{PLC}")
+TOPIC_BASE = getenv_str("TOPIC_BASE", f"plant/{SITE}/{UNIT}/{PLC}/cv")
+PUBSUB_TOPIC = getenv_str("PUBSUB_TOPIC", f"opcua/json/{SITE}-{UNIT}-{PLC}")
 
-# فاصله ارسال بسته PubSub (بر اساس تغییرات جمع‌شده)
-PUBLISH_INTERVAL_MS = int(os.getenv("PUBLISH_INTERVAL_MS", "1000"))
+ENABLE_PER_TAG_PUBLISH = getenv_bool("ENABLE_PER_TAG_PUBLISH", False)
+ENABLE_INIT_SNAPSHOT = getenv_bool("ENABLE_INIT_SNAPSHOT", True)
 
-LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+PUBLISH_INTERVAL_MS = getenv_int("PUBLISH_INTERVAL_MS", 1000)
+MAX_AGG_ITEMS_PER_MSG = getenv_int("MAX_AGG_ITEMS_PER_MSG", 300)
 
-# عمق گشتن درخت فقط در شروع
-MAX_BROWSE_DEPTH = int(os.getenv("MAX_BROWSE_DEPTH", "20"))
-BROWSE_DELAY_MS = int(os.getenv("BROWSE_DELAY_MS", "50"))
+MAX_BROWSE_DEPTH = getenv_int("MAX_BROWSE_DEPTH", 25)
+BROWSE_DELAY_MS = getenv_int("BROWSE_DELAY_MS", 50)
 
-# مسیر شروع زیر Objects
-OPCUA_START_PATH = os.getenv("OPCUA_START_PATH", "DA.MODULES.BOILER").strip()
+OPCUA_START_PATH = getenv_str("OPCUA_START_PATH", "DA.MODULES.BOILER")
+TAG_MATCH_REGEX = getenv_str("TAG_MATCH_REGEX", r"(^|[./])CV$")
 
-# رجکس برای انتخاب تگ‌ها (مثلاً (^|[./])CV$)
-TAG_MATCH_REGEX = os.getenv("TAG_MATCH_REGEX", r"(^|[./])CV$")
+LOG_LEVEL = getenv_str("LOG_LEVEL", "INFO").upper()
+
+# =======================
+#   LOGGING
+# =======================
 
 logging.basicConfig(
     level=getattr(logging, LOG_LEVEL, logging.INFO),
@@ -58,18 +87,16 @@ log = logging.getLogger("opcua2mqtt")
 try:
     TAG_RE = re.compile(TAG_MATCH_REGEX, re.IGNORECASE)
 except re.error as e:
-    log.warning(
-        "Invalid TAG_MATCH_REGEX=%r (%s) – falling back to simple .CV matching",
-        TAG_MATCH_REGEX,
-        e,
-    )
+    log.warning("Invalid TAG_MATCH_REGEX=%r (%s) – fallback disabled", TAG_MATCH_REGEX, e)
     TAG_RE = None
 
 stop = False
 
+# =======================
+#   UTIL
+# =======================
 
 def iso_now() -> str:
-    """زمان فعلی به صورت ISO8601 در UTC بدون microsecond."""
     return (
         datetime.now(timezone.utc)
         .replace(microsecond=0)
@@ -77,17 +104,14 @@ def iso_now() -> str:
         .replace("+00:00", "Z")
     )
 
-
 def valid_qos(q: int) -> int:
     return q if q in (0, 1, 2) else 0
-
 
 # =======================
 #   JSON SAFE CONVERSION
 # =======================
 
 def to_jsonable(obj: Any) -> Any:
-    """هر نوع OPC UA / Python را به نوع قابل JSON تبدیل می‌کند."""
     if isinstance(obj, (str, int, float, bool)) or obj is None:
         return obj
 
@@ -120,10 +144,18 @@ def to_jsonable(obj: Any) -> Any:
 
     return str(obj)
 
+def normalize_value(val: Any) -> Dict[str, Any]:
+    if isinstance(val, bool):
+        return {"value_type": "bool", "value_bool": val}
+    if isinstance(val, (int, float)):
+        return {"value_type": "number", "value_num": float(val)}
+    return {"value_type": "string", "value_str": str(val)}
+
+# =======================
+#   BUFFER
+# =======================
 
 class PubBuffer:
-    """بافر ساده برای تجمیع تغییرات قبل از ارسال پیام PubSub روی MQTT."""
-
     def __init__(self):
         self._lock = threading.Lock()
         self._seq = itertools.count(1)
@@ -133,21 +165,23 @@ class PubBuffer:
         with self._lock:
             self._pending[tagname] = value
 
-    def drain(self) -> Dict[str, Any]:
+    def drain_some(self, limit: int) -> Dict[str, Any]:
         with self._lock:
-            d = dict(self._pending)
-            self._pending.clear()
-            return d
+            if not self._pending:
+                return {}
+            keys = list(self._pending.keys())[:max(1, limit)]
+            return {k: self._pending.pop(k) for k in keys}
 
     def next(self) -> int:
         return next(self._seq)
+
 
 
 # =======================
 #   MQTT
 # =======================
 
-def mqtt_connect():
+def mqtt_connect() -> mqtt.Client:
     qos = valid_qos(MQTT_QOS)
     client_id = f"opcua2mqtt-{int(time.time())}"
 
@@ -182,23 +216,24 @@ def mqtt_connect():
             time.sleep(delay)
             delay = min(delay * 2, 30)
 
+    return c
 
-def mqtt_publish(c, topic: str, payload: dict, retain=False, qos=None):
+
+def mqtt_publish(c: mqtt.Client, topic: str, payload: dict, retain: bool = False, qos: Optional[int] = None):
     if qos is None:
         qos = valid_qos(MQTT_QOS)
+
     try:
         safe_payload = to_jsonable(payload)
         data = json.dumps(safe_payload, ensure_ascii=False)
     except Exception as e:
-        log.error("JSON encode failed for topic=%s payload=%r error=%s", topic, payload, e)
+        log.error("JSON encode failed topic=%s error=%s payload=%r", topic, e, payload)
         return
 
     try:
         info = c.publish(topic, data, qos=qos, retain=retain)
         if info.rc != mqtt.MQTT_ERR_SUCCESS:
             log.warning("Publish FAILED rc=%s topic=%s", info.rc, topic)
-        else:
-            log.debug("Publish OK topic=%s retain=%s", topic, retain)
     except Exception as e:
         log.error("MQTT publish exception topic=%s error=%s", topic, e)
 
@@ -229,7 +264,6 @@ def build_opcua_client() -> Client:
 
 
 def browse_children(node, client: Client):
-    """یک بار children را می‌خواند؛ delay برای فشار نیاوردن به DeltaV."""
     out = []
     try:
         refs = node.get_references(
@@ -247,13 +281,14 @@ def browse_children(node, client: Client):
             out.append((dn, child))
         except Exception as e:
             log.warning("browse child err: %s", e)
+
         if BROWSE_DELAY_MS > 0:
             time.sleep(BROWSE_DELAY_MS / 1000.0)
+
     return out
 
 
 def resolve_path_from_objects(client: Client, path_str: str):
-    """مثلاً DA.MODULES.BOILER را از زیر Objects پیدا می‌کند."""
     parts = [p.strip() for p in path_str.split(".") if p.strip()]
     node = client.get_objects_node()
     current_path = ["Objects"]
@@ -266,25 +301,16 @@ def resolve_path_from_objects(client: Client, path_str: str):
                 found = child
                 break
         if not found:
-            log.error(
-                "Path component '%s' not found under %s",
-                part,
-                ".".join(current_path),
-            )
+            log.error("Path component '%s' not found under %s", part, ".".join(current_path))
             return None
         node = found
         current_path.append(part)
 
-    log.info(
-        "Resolved OPCUA_START_PATH=%s to node %s",
-        path_str,
-        ".".join(current_path),
-    )
+    log.info("Resolved OPCUA_START_PATH=%s to node %s", path_str, ".".join(current_path))
     return node, current_path
 
 
 def _is_cv_tag(path: List[str], name: str) -> bool:
-    """بررسی می‌کند این نود یک CV است یا نه."""
     logical_path = path[1:] if path and path[0] == "Objects" else path
     full = "/".join(logical_path + [name])
     if TAG_RE is not None:
@@ -293,10 +319,6 @@ def _is_cv_tag(path: List[str], name: str) -> bool:
 
 
 def _crawl_from_node(client: Client, root_node, root_path: List[str]) -> Dict[str, Dict]:
-    """
-    فقط یک بار در startup اجرا می‌شود.
-    هیچ Loop دوره‌ای برای browse بعد از این وجود ندارد.
-    """
     result: Dict[str, Dict] = {}
     stack: List[Tuple[List[str], Any, int]] = [(root_path, root_node, 0)]
 
@@ -319,26 +341,16 @@ def _crawl_from_node(client: Client, root_node, root_path: List[str]) -> Dict[st
             if node_class == ua.NodeClass.Variable and _is_cv_tag(path, name):
                 tagname = ".".join(new_path)
                 nodeid_str = child.nodeid.to_string()
-                result[tagname] = {
-                    "node": child,
-                    "nodeid_str": nodeid_str,
-                }
+                result[tagname] = {"node": child, "nodeid_str": nodeid_str}
                 log.info("FOUND CV TAG: %s -> %s", tagname, nodeid_str)
 
-            # ادامه گشتن فقط در startup
-            if node_class in (
-                ua.NodeClass.Object,
-                ua.NodeClass.Unspecified,
-                ua.NodeClass.VariableType,
-                None,
-            ):
+            if node_class in (ua.NodeClass.Object, ua.NodeClass.Unspecified, ua.NodeClass.VariableType, None):
                 stack.append((new_path, child, depth + 1))
 
     return result
 
 
 def crawl_all_for_cv(client: Client) -> Dict[str, Dict]:
-    """فقط یک بار در شروع اجرا می‌شود؛ هیچ تکرار دوره‌ای ندارد."""
     if not OPCUA_START_PATH:
         log.error("OPCUA_START_PATH is empty – nothing to browse.")
         return {}
@@ -349,11 +361,7 @@ def crawl_all_for_cv(client: Client) -> Dict[str, Dict]:
         return {}
 
     root_node, root_path = resolved
-    log.info(
-        "Browsing CVs under: %s (max depth %d)",
-        ".".join(root_path),
-        MAX_BROWSE_DEPTH,
-    )
+    log.info("Browsing CVs under: %s (max depth %d)", ".".join(root_path), MAX_BROWSE_DEPTH)
     cv_map = _crawl_from_node(client, root_node, root_path)
     log.info("Finished browse. CV tags found: %d", len(cv_map))
     return cv_map
@@ -366,101 +374,99 @@ def crawl_all_for_cv(client: Client) -> Dict[str, Dict]:
 def run_once():
     global stop
 
-    # 1) MQTT
     mqttc = mqtt_connect()
 
-    # پیام تست
-    test_topic = "test/opcua2mqtt/hello"
-    test_payload = {"msg": "hello from opcua2mqtt", "ts": iso_now()}
-    mqtt_publish(mqttc, test_topic, test_payload, retain=False)
-    log.info("TEST MQTT MESSAGE sent on topic %s", test_topic)
+    # Test message
+    mqtt_publish(mqttc, "test/opcua2mqtt/hello", {"msg": "hello from opcua2mqtt", "ts": iso_now()}, retain=False)
+    log.info("TEST MQTT MESSAGE sent")
 
-    # 2) OPC UA
     client = build_opcua_client()
     client.connect()
     log.info("✅ OPC UA session active")
 
-    # 3) فقط یک بار Browse برای پیدا کردن CVها
     cv_map = crawl_all_for_cv(client)
     total = len(cv_map)
     log.info("Total CV tags found under %s: %d", OPCUA_START_PATH, total)
-    if total == 0:
-        log.warning("No CV tags found under configured path")
 
-    # 4) Initial snapshot (retained) – یک بار
-    log.info("Publishing %d retained init snapshots to MQTT...", total)
-    for tagname, info in cv_map.items():
-        node = info["node"]
-        nodeid_str = info["nodeid_str"]
-        try:
-            v = node.get_value()
-        except Exception as e:
-            log.error("Initial read failed for %s: %s", tagname, e)
-            continue
-        payload = {
-            "tag": tagname,
-            "nodeid": nodeid_str,
-            "value": v,
-            "ts": iso_now(),
-        }
-        topic = f"{TOPIC_BASE}/init/{tagname}"
-        mqtt_publish(mqttc, topic, payload, retain=True)
-    log.info("Initial publish done.")
+    # Build meta map (nodeid -> tagname)
+    node_to_meta: Dict[str, Dict[str, str]] = {
+        info["nodeid_str"]: {"tagname": tagname, "nodeid": info["nodeid_str"]}
+        for tagname, info in cv_map.items()
+    }
 
-    # map برای datachange
-    node_to_meta: Dict[str, Dict[str, str]] = {}
-    for tagname, info in cv_map.items():
-        nodeid_str = info["nodeid_str"]
-        node_to_meta[nodeid_str] = {"tagname": tagname, "nodeid": nodeid_str}
+    # Optional initial retained snapshots (careful with volume!)
+    if ENABLE_INIT_SNAPSHOT and total > 0:
+        log.info("Publishing retained init snapshots (%d)...", total)
+        for tagname, info in cv_map.items():
+            try:
+                v = info["node"].get_value()
+            except Exception as e:
+                log.error("Initial read failed for %s: %s", tagname, e)
+                continue
+
+            payload = {
+                "tag": tagname,
+                "nodeid": info["nodeid_str"],
+                "ts": iso_now(),
+                **normalize_value(v),
+            }
+            topic = f"{TOPIC_BASE}/init/{tagname}"
+            mqtt_publish(mqttc, topic, payload, retain=True)
+
+        log.info("Initial publish done.")
 
     agg = PubBuffer()
 
     class Handler:
         def datachange_notification(self_inner, node, val, data):
             nodekey = node.nodeid.to_string()
-            meta = node_to_meta.get(
-                nodekey, {"tagname": nodekey, "nodeid": nodekey}
-            )
+            meta = node_to_meta.get(nodekey, {"tagname": nodekey, "nodeid": nodekey})
             tagname = meta["tagname"]
             nodeid_str = meta["nodeid"]
-            log.info("DATA CHANGE %s -> %s", tagname, val)
+
             payload = {
                 "tag": tagname,
                 "nodeid": nodeid_str,
-                "value": val,
                 "ts": iso_now(),
+                **normalize_value(val),
             }
-            topic = f"{TOPIC_BASE}/{tagname}"
-            mqtt_publish(mqttc, topic, payload, retain=False)
+
+            # Optional per-tag publish (high volume!)
+            if ENABLE_PER_TAG_PUBLISH:
+                topic = f"{TOPIC_BASE}/{tagname}"
+                mqtt_publish(mqttc, topic, payload, retain=False)
+
+            # Aggregate buffer
             agg.add(tagname, val)
 
-    # 5) Subscription فقط روی CVها – بدون هیچ browse/read loop بعدی
+    # Subscribe
     if cv_map:
         sub = client.create_subscription(1000, Handler())
         sub.subscribe_data_change([info["node"] for info in cv_map.values()])
         log.info("Subscribed to %d CV tags", len(cv_map))
     else:
         sub = None
+        log.warning("No CV tags to subscribe.")
 
-    # 6) حلقه‌ی PubSub aggregate روی تاپیک OPC UA PubSub
+    # Aggregate publish loop
     def pub_loop():
         while not stop:
             time.sleep(PUBLISH_INTERVAL_MS / 1000.0)
-            payloads = agg.drain()
+
+            payloads = agg.drain_some(MAX_AGG_ITEMS_PER_MSG)
             if not payloads:
                 continue
+
+            # Convert each value to a stable schema (no type conflicts)
+            stable_payload: Dict[str, Any] = {}
+            for k, v in payloads.items():
+                stable_payload[k] = normalize_value(v)
+
             msg = {
                 "MessageId": str(agg.next()),
                 "PublisherId": f"{SITE}-{UNIT}-{PLC}",
-                "Messages": [
-                    {
-                        "DataSetWriterId": 1,
-                        "SequenceNumber": agg.next(),
-                        "MetaDataVersion": {"MajorVersion": 1, "MinorVersion": 0},
-                        "Timestamp": iso_now(),
-                        "Payload": to_jsonable(payloads),
-                    }
-                ],
+                "Timestamp": iso_now(),
+                "Payload": stable_payload,
             }
             mqtt_publish(mqttc, PUBSUB_TOPIC, msg, retain=False)
 
@@ -468,7 +474,6 @@ def run_once():
     t.start()
 
     try:
-        # دیگر هیچ browse/read دوره‌ای نداریم؛ فقط منتظر eventها هستیم
         while not stop:
             time.sleep(0.5)
     finally:
@@ -482,12 +487,7 @@ def run_once():
         except Exception:
             pass
         try:
-            mqtt_publish(
-                mqttc,
-                f"{PUBSUB_TOPIC}/$status",
-                {"status": "offline", "ts": iso_now()},
-                retain=True,
-            )
+            mqtt_publish(mqttc, f"{PUBSUB_TOPIC}/$status", {"status": "offline", "ts": iso_now()}, retain=True)
             mqttc.loop_stop()
             mqttc.disconnect()
         except Exception:
